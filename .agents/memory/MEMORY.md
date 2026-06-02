@@ -1,0 +1,1 @@
+- [Whop integration](whop-integration.md) — Whop substituiu Stripe; usa planos dinâmicos por pedido (não pré-criados por produto).
