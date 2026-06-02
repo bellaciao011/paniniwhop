@@ -609,10 +609,13 @@ export default function Checkout() {
                             data-whop-checkout-plan-id={embedPlanId}
                             {...(embedSessionId ? { "data-whop-checkout-session": embedSessionId } : {})}
                             data-whop-checkout-theme="light"
+                            data-whop-checkout-locale="en"
                             data-whop-checkout-prefill-email={formData.email}
                             data-whop-checkout-hide-email="true"
                             data-whop-checkout-hide-address-form="true"
-                            style={{ width: "100%", minHeight: "640px", display: "block" }}
+                            data-whop-checkout-style-container-padding-x="0"
+                            data-whop-checkout-style-container-padding-y="16"
+                            style={{ width: "100%", minHeight: "600px", display: "block" }}
                           />
                         )}
                       </div>
