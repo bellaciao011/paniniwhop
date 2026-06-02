@@ -1,0 +1,14 @@
+{
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @workspace/panini-mundial run build",
+  "outputDirectory": "artifacts/panini-mundial/dist/public",
+  "rewrites": [
+    { "source": "/((?!api/|.well-known/).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/update-tracking",
+      "schedule": "0 10 * * *"
+    }
+  ]
+}
