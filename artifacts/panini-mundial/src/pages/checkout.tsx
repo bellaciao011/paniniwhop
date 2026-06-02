@@ -531,7 +531,7 @@ export default function Checkout() {
                   )}
 
                   {/* Payment area */}
-                  <div className="px-5 pt-5 pb-5 border-t border-gray-100">
+                  <div className={showEmbed ? "border-t border-gray-100" : "px-5 pt-5 pb-5 border-t border-gray-100"}>
                     {!showEmbed && (
                       <>
                         <h2 className="text-xl font-bold text-gray-900 mb-0.5">Payment</h2>
@@ -589,7 +589,7 @@ export default function Checkout() {
                     {/* ── PAYMENT EMBED ── */}
                     {showEmbed && embedPlanId && (
                       <div>
-                        <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center justify-between px-5 pt-5 pb-4">
                           <div className="flex items-center gap-2">
                             <Lock className="w-4 h-4 text-green-600" />
                             <span className="text-sm font-bold text-gray-700">
@@ -604,7 +604,7 @@ export default function Checkout() {
 
                         {isInIframe ? (
                           /* ── Iframe context (Replit preview): open popup ── */
-                          <div className="text-center py-8 px-4 bg-gray-50 rounded-xl border border-gray-200">
+                          <div className="text-center py-10 px-6 bg-gray-50 rounded-xl border border-gray-200 mx-5 mb-5">
                             {popupWaiting ? (
                               <>
                                 <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
@@ -645,7 +645,7 @@ export default function Checkout() {
                             data-whop-checkout-prefill-email={formData.email}
                             data-whop-checkout-hide-email="true"
                             data-whop-checkout-hide-address-form="true"
-                            style={{ width: "100%", minHeight: "480px" }}
+                            style={{ width: "100%", minHeight: "680px" }}
                           />
                         )}
                       </div>
