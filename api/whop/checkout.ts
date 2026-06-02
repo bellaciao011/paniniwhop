@@ -143,7 +143,6 @@ export default async function handler(
       plan_id: planId,
       redirect_url: redirectUrl,
       metadata: { order_id: orderId, kit_id: kitId, order_type: body.orderType ?? "main" },
-      payment_method_types: ["card", "apple_pay", "google_pay"],
     }, apiKey) as { purchase_url?: string; id?: string };
 
     if (!checkout.purchase_url) {

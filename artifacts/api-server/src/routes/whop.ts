@@ -167,7 +167,6 @@ router.post("/whop/checkout", async (req: Request, res: Response) => {
       plan_id: planId,
       redirect_url: redirectUrl,
       metadata: { order_id: orderId, kit_id: kitId ?? "", order_type: orderType },
-      payment_method_types: ["card", "apple_pay", "google_pay"],
     }, cfg.apiKey) as { purchase_url?: string; id?: string; error?: unknown };
 
     if (!checkout.purchase_url) {
