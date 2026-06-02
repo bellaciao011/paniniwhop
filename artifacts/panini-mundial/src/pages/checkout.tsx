@@ -24,11 +24,6 @@ export default function Checkout() {
     try { return window !== window.top; } catch { return true; }
   });
 
-  // ── Detect mobile: redirect to Whop page instead of embedding ──
-  const [isMobile] = useState<boolean>(() => {
-    try { return window.innerWidth < 768; } catch { return false; }
-  });
-
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string>("");
   const [selectedBumps, setSelectedBumps] = useState<Set<string>>(new Set());
@@ -608,13 +603,16 @@ export default function Checkout() {
                             )}
                           </div>
                         ) : (
-                          /* ── Non-iframe (production): direct iframe for proper mobile rendering ── */
-                          <iframe
+                          /* ── Production: loader.js embed (official Whop inline method) ── */
+                          <div
                             key={embedPlanId}
-                            src={embedPurchaseUrl ?? undefined}
-                            style={{ width: "100%", height: "680px", border: "none", display: "block" }}
-                            allow="payment"
-                            title="Secure Checkout"
+                            data-whop-checkout-plan-id={embedPlanId}
+                            {...(embedSessionId ? { "data-whop-checkout-session": embedSessionId } : {})}
+                            data-whop-checkout-theme="light"
+                            data-whop-checkout-prefill-email={formData.email}
+                            data-whop-checkout-hide-email="true"
+                            data-whop-checkout-hide-address-form="true"
+                            style={{ width: "100%", minHeight: "640px", display: "block" }}
                           />
                         )}
                       </div>
