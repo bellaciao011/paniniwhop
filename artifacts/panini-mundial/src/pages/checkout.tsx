@@ -211,12 +211,6 @@ export default function Checkout() {
         return;
       }
 
-      // On mobile (non-iframe), redirect directly to Whop's responsive checkout page
-      if (isMobile && !isInIframe && data.purchaseUrl) {
-        window.location.href = data.purchaseUrl;
-        return; // navigation in progress
-      }
-
       setEmbedPlanId(data.planId);
       setEmbedSessionId(data.sessionId ?? null);
       setEmbedOrderId(data.orderId ?? null);
@@ -614,16 +608,13 @@ export default function Checkout() {
                             )}
                           </div>
                         ) : (
-                          /* ── Non-iframe (production): inline Whop checkout via loader.js ── */
-                          <div
+                          /* ── Non-iframe (production): direct iframe for proper mobile rendering ── */
+                          <iframe
                             key={embedPlanId}
-                            data-whop-checkout-plan-id={embedPlanId}
-                            {...(embedSessionId ? { "data-whop-checkout-session": embedSessionId } : {})}
-                            data-whop-checkout-theme="light"
-                            data-whop-checkout-prefill-email={formData.email}
-                            data-whop-checkout-hide-email="true"
-                            data-whop-checkout-hide-address-form="true"
-                            style={{ width: "100%", minHeight: "680px" }}
+                            src={embedPurchaseUrl ?? undefined}
+                            style={{ width: "100%", height: "680px", border: "none", display: "block" }}
+                            allow="payment"
+                            title="Secure Checkout"
                           />
                         )}
                       </div>
