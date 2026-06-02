@@ -3,8 +3,9 @@ import { useSearch } from "wouter";
 import { motion } from "framer-motion";
 import {
   ChevronRight, CheckCircle2, ShieldCheck, Truck, Lock,
-  CreditCard, CheckCircle, Loader2, AlertCircle, X, ExternalLink,
+  CreditCard, CheckCircle, Loader2, AlertCircle,
 } from "lucide-react";
+import { WhopCheckoutEmbed, useCheckoutEmbedControls } from "@whop/checkout/react";
 import { Header } from "@/components/Header";
 import { kits } from "@/lib/kits";
 import { stickerPackets } from "@/lib/packets";
@@ -19,10 +20,7 @@ export default function Checkout() {
   const kit = allProducts.find((k) => k.id === kitId) || kits[2];
   const utmParams = readUtms();
 
-  // ── Detect if inside an iframe (Replit preview, etc.) ──
-  const [isInIframe] = useState<boolean>(() => {
-    try { return window !== window.top; } catch { return true; }
-  });
+  const checkoutRef = useCheckoutEmbedControls();
 
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string>("");
@@ -32,82 +30,12 @@ export default function Checkout() {
   const [embedPlanId, setEmbedPlanId] = useState<string | null>(null);
   const [embedSessionId, setEmbedSessionId] = useState<string | null>(null);
   const [embedOrderId, setEmbedOrderId] = useState<string | null>(null);
-  const [embedPurchaseUrl, setEmbedPurchaseUrl] = useState<string | null>(null);
   const [showEmbed, setShowEmbed] = useState(false);
   const [preparingEmbed, setPreparingEmbed] = useState(false);
-  const [popupWaiting, setPopupWaiting] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
 
   const [trackingCode, setTrackingCode] = useState<string | null>(null);
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // ── Handle return from popup (popup navigated here after payment) ──
-  useEffect(() => {
-    const returnFlag = params.get("return");
-    const returnOrderId = params.get("orderId");
-    if (returnFlag !== "1" || !returnOrderId) return;
-
-    // Confirm payment with backend
-    fetch(apiUrl("/api/whop/confirm"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId: returnOrderId }),
-    })
-      .then((r) => r.json())
-      .then((data: { trackingCode?: string }) => {
-        if (window.opener) {
-          // We're inside a popup window — notify parent and close
-          window.opener?.postMessage(
-            { type: "whop_complete", trackingCode: data.trackingCode ?? null },
-            window.location.origin
-          );
-          window.close();
-        } else {
-          // Normal top-level navigation return
-          if (data.trackingCode) setTrackingCode(data.trackingCode);
-          setStep(4);
-        }
-      })
-      .catch(() => {
-        if (!window.opener) setStep(4);
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Listen for popup completion message ──
-  useEffect(() => {
-    const handler = (evt: MessageEvent) => {
-      if (evt.origin !== window.location.origin) return;
-      if (evt.data?.type !== "whop_complete") return;
-      if (evt.data.trackingCode) setTrackingCode(evt.data.trackingCode);
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-      setPopupWaiting(false);
-      setShowEmbed(false);
-      setStep(4);
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, []);
-
-  // ── Polling fallback (webhook-based): fires when popup is open ──
-  useEffect(() => {
-    if (!popupWaiting || !embedOrderId) return;
-    pollRef.current = setInterval(async () => {
-      try {
-        const r = await fetch(apiUrl(`/api/public/payment-status?orderId=${embedOrderId}`));
-        const d = await r.json() as { status?: string; tracking_code?: string };
-        if (d.status === "PAID") {
-          clearInterval(pollRef.current!);
-          pollRef.current = null;
-          if (d.tracking_code) setTrackingCode(d.tracking_code);
-          setPopupWaiting(false);
-          setShowEmbed(false);
-          setStep(4);
-        }
-      } catch { /* retry */ }
-    }, 3000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [popupWaiting, embedOrderId]);
 
   const fmtGBP = (n: number) =>
     new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(n);
@@ -154,13 +82,12 @@ export default function Checkout() {
 
   const handlePrepareEmbed = async () => {
     setPreparingEmbed(true);
+    setCheckoutSubmitting(false);
     setError("");
     try {
-      const addr = [
-        formData.morada,
-        formData.numero && `#${formData.numero}`,
+      const line2Parts = [
+        formData.numero ? `#${formData.numero}` : null,
         formData.andar || null,
-        [formData.codigoPostal, formData.localidade].filter(Boolean).join(" "),
       ].filter(Boolean).join(", ");
 
       const items = [
@@ -182,7 +109,7 @@ export default function Checkout() {
           customerName: formData.nome,
           customerPhone: formData.telemovel,
           customerDocument: formData.nif,
-          shippingAddress: addr,
+          shippingAddress: [formData.morada, line2Parts].filter(Boolean).join(", "),
           shippingPostalCode: formData.codigoPostal,
           shippingCity: formData.localidade,
           shippingDistrict: formData.distrito,
@@ -209,7 +136,6 @@ export default function Checkout() {
       setEmbedPlanId(data.planId);
       setEmbedSessionId(data.sessionId ?? null);
       setEmbedOrderId(data.orderId ?? null);
-      setEmbedPurchaseUrl(data.purchaseUrl ?? null);
       setShowEmbed(true);
       setPreparingEmbed(false);
     } catch {
@@ -218,24 +144,15 @@ export default function Checkout() {
     }
   };
 
-  const openPopup = () => {
-    if (!embedPurchaseUrl) return;
-    window.open(embedPurchaseUrl, "whop_checkout", "width=540,height=720,left=200,top=80,menubar=no,toolbar=no,status=no");
-    setPopupWaiting(true);
-  };
-
   const resetEmbed = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     setShowEmbed(false);
     setEmbedPlanId(null);
     setEmbedSessionId(null);
     setEmbedOrderId(null);
-    setEmbedPurchaseUrl(null);
-    setPopupWaiting(false);
+    setCheckoutSubmitting(false);
   };
 
-  // ── onComplete for the inline embed (non-iframe / production) ──
-  const handleEmbedComplete = async (planId: string, receiptId: string) => {
+  const handleEmbedComplete = async (_id: string, receiptId?: string) => {
     try {
       const r = await fetch(apiUrl("/api/whop/confirm"), {
         method: "POST",
@@ -249,15 +166,23 @@ export default function Checkout() {
     setStep(4);
   };
 
-  // ── Auto-load Whop checkout when entering step 3 ──
-  useEffect(() => {
-    if (step === 3) {
-      handlePrepareEmbed();
+  const handlePay = async () => {
+    if (!checkoutRef.current) return;
+    setCheckoutSubmitting(true);
+    try {
+      await checkoutRef.current.submit();
+    } catch {
+      setCheckoutSubmitting(false);
     }
+  };
+
+  // Auto-load Whop checkout when entering step 3
+  useEffect(() => {
+    if (step === 3) handlePrepareEmbed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  // ── Reload checkout when bumps or quantity change on step 3 ──
+  // Reload checkout when bumps or quantity change on step 3
   useEffect(() => {
     if (step !== 3) return;
     if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
@@ -269,7 +194,7 @@ export default function Checkout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBumps, quantity]);
 
-  // ── Step 4: Confirmation ──
+  // Step 4: Confirmation
   if (step === 4) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center">
@@ -496,7 +421,7 @@ export default function Checkout() {
                 </motion.div>
               )}
 
-              {/* Step 3 */}
+              {/* Step 3 — Payment */}
               {step === 3 && (
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
 
@@ -554,9 +479,9 @@ export default function Checkout() {
                     )}
 
                     {/* ── PAYMENT EMBED ── */}
-                    {showEmbed && embedPlanId && (
+                    {showEmbed && (embedSessionId || embedPlanId) && (
                       <div>
-                        <div className="flex items-center justify-between px-5 pt-5 pb-4">
+                        <div className="flex items-center justify-between px-5 pt-5 pb-2">
                           <div className="flex items-center gap-2">
                             <Lock className="w-4 h-4 text-green-600" />
                             <span className="text-sm font-bold text-gray-700">
@@ -569,61 +494,54 @@ export default function Checkout() {
                           </button>
                         </div>
 
-                        {isInIframe ? (
-                          /* ── Iframe context (Replit preview): open popup ── */
-                          <div className="text-center py-10 px-6 bg-gray-50 rounded-xl border border-gray-200 mx-5 mb-5">
-                            {popupWaiting ? (
-                              <>
-                                <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
-                                <p className="font-bold text-gray-800 mb-1">Waiting for payment…</p>
-                                <p className="text-sm text-gray-500 mb-5">
-                                  Complete your payment in the window that opened.<br />
-                                  This page will update automatically when done.
-                                </p>
-                                <button type="button" onClick={openPopup}
-                                  className="text-xs text-primary underline">
-                                  Window didn't open? Click here to retry
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                                  <ExternalLink className="w-7 h-7 text-primary" />
-                                </div>
-                                <p className="font-bold text-gray-800 text-lg mb-1">Ready to pay {fmtGBP(orderTotal)}</p>
-                                <p className="text-sm text-gray-500 mb-5">
-                                  A secure checkout window will open.<br />
-                                  Come back here after completing payment.
-                                </p>
-                                <button type="button" onClick={openPopup}
-                                  className="w-full bg-primary hover:bg-green-700 text-white font-black text-base py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
-                                  <ExternalLink className="w-5 h-5" /> Open Secure Checkout
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        ) : (
-                          /* ── Production: loader.js embed (official Whop inline method) ── */
-                          <div
-                            key={embedPlanId}
-                            data-whop-checkout-plan-id={embedPlanId}
-                            {...(embedSessionId ? { "data-whop-checkout-session": embedSessionId } : {})}
-                            data-whop-checkout-theme="light"
-                            data-whop-checkout-locale="en"
-                            data-whop-checkout-prefill-email={formData.email}
-                            data-whop-checkout-hide-email="true"
-                            data-whop-checkout-hide-address-form="true"
-                            data-whop-checkout-style-container-padding-x="0"
-                            data-whop-checkout-style-container-padding-y="16"
-                            style={{ width: "100%", minHeight: "600px", display: "block" }}
-                          />
-                        )}
+                        <WhopCheckoutEmbed
+                          {...(embedSessionId
+                            ? { sessionId: embedSessionId }
+                            : { planId: embedPlanId! }
+                          )}
+                          ref={checkoutRef}
+                          theme="light"
+                          hideEmail={true}
+                          hideAddressForm={true}
+                          hideSubmitButton={true}
+                          skipRedirect={true}
+                          prefill={{
+                            email: formData.email,
+                            address: {
+                              name: formData.nome,
+                              country: "GB",
+                              line1: formData.morada,
+                              ...(formData.numero || formData.andar ? {
+                                line2: [formData.numero && `#${formData.numero}`, formData.andar].filter(Boolean).join(", "),
+                              } : {}),
+                              city: formData.localidade,
+                              state: formData.distrito || "",
+                              postalCode: formData.codigoPostal,
+                            },
+                          }}
+                          styles={{ container: { paddingX: 0, paddingY: 16 } }}
+                          onComplete={handleEmbedComplete}
+                        />
+
+                        <div className="px-5 pb-5">
+                          <button
+                            type="button"
+                            onClick={handlePay}
+                            disabled={checkoutSubmitting}
+                            className="w-full bg-primary hover:bg-green-700 disabled:opacity-60 text-white font-black text-lg py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                          >
+                            {checkoutSubmitting
+                              ? <><Loader2 className="w-5 h-5 animate-spin" /> Processing…</>
+                              : <>Pay {fmtGBP(orderTotal)} →</>
+                            }
+                          </button>
+                          <p className="text-center text-[11px] text-gray-400 mt-3">SSL Secure checkout · 7-day guarantee · Free delivery UK</p>
+                        </div>
                       </div>
                     )}
 
-                    {!showEmbed && !preparingEmbed && (
-                      <div className="px-5 pb-5">
-                        <p className="text-center text-[11px] text-gray-400 mb-3">SSL Secure checkout · 7-day guarantee · Free delivery UK</p>
+                    {!showEmbed && !preparingEmbed && !error && (
+                      <div className="px-5 pb-5 pt-4">
                         <div className="flex items-center justify-center gap-3 mb-3">
                           <CreditCard className="w-4 h-4 text-gray-400" />
                           <span className="text-xs font-black text-gray-500 border border-gray-300 rounded px-2 py-0.5">VISA</span>
