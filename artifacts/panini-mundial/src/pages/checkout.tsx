@@ -32,7 +32,6 @@ export default function Checkout() {
   const [embedOrderId, setEmbedOrderId] = useState<string | null>(null);
   const [showEmbed, setShowEmbed] = useState(false);
   const [preparingEmbed, setPreparingEmbed] = useState(false);
-  const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
 
   const [trackingCode, setTrackingCode] = useState<string | null>(null);
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -82,7 +81,6 @@ export default function Checkout() {
 
   const handlePrepareEmbed = async () => {
     setPreparingEmbed(true);
-    setCheckoutSubmitting(false);
     setError("");
     try {
       const line2Parts = [
@@ -149,7 +147,6 @@ export default function Checkout() {
     setEmbedPlanId(null);
     setEmbedSessionId(null);
     setEmbedOrderId(null);
-    setCheckoutSubmitting(false);
   };
 
   const handleEmbedComplete = async (_id: string, receiptId?: string) => {
@@ -164,16 +161,6 @@ export default function Checkout() {
     } catch { /* confirm failed silently */ }
     setShowEmbed(false);
     setStep(4);
-  };
-
-  const handlePay = async () => {
-    if (!checkoutRef.current) return;
-    setCheckoutSubmitting(true);
-    try {
-      await checkoutRef.current.submit();
-    } catch {
-      setCheckoutSubmitting(false);
-    }
   };
 
   // Auto-load Whop checkout when entering step 3
@@ -503,7 +490,6 @@ export default function Checkout() {
                           theme="light"
                           hideEmail={true}
                           hideAddressForm={true}
-                          hideSubmitButton={true}
                           skipRedirect={true}
                           prefill={{
                             email: formData.email,
@@ -519,24 +505,9 @@ export default function Checkout() {
                               postalCode: formData.codigoPostal,
                             },
                           }}
-                          styles={{ container: { paddingX: 0, paddingY: 16 } }}
+                          styles={{ container: { paddingX: 0, paddingY: 8 } }}
                           onComplete={handleEmbedComplete}
                         />
-
-                        <div className="px-5 pb-5">
-                          <button
-                            type="button"
-                            onClick={handlePay}
-                            disabled={checkoutSubmitting}
-                            className="w-full bg-primary hover:bg-green-700 disabled:opacity-60 text-white font-black text-lg py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-                          >
-                            {checkoutSubmitting
-                              ? <><Loader2 className="w-5 h-5 animate-spin" /> Processing…</>
-                              : <>Pay {fmtGBP(orderTotal)} →</>
-                            }
-                          </button>
-                          <p className="text-center text-[11px] text-gray-400 mt-3">SSL Secure checkout · 7-day guarantee · Free delivery UK</p>
-                        </div>
                       </div>
                     )}
 
