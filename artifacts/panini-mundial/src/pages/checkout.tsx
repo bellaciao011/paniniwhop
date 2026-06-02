@@ -39,6 +39,7 @@ export default function Checkout() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [trackingCode, setTrackingCode] = useState<string | null>(null);
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Handle return from popup (popup navigated here after payment) ──
   useEffect(() => {
@@ -121,7 +122,6 @@ export default function Checkout() {
   const orderTotal = kit.price * quantity + bumpsTotal;
 
   const toggleBump = (id: string) => {
-    if (showEmbed) return;
     setSelectedBumps(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -248,6 +248,26 @@ export default function Checkout() {
     setShowEmbed(false);
     setStep(4);
   };
+
+  // ── Auto-load Whop checkout when entering step 3 ──
+  useEffect(() => {
+    if (step === 3) {
+      handlePrepareEmbed();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  // ── Reload checkout when bumps or quantity change on step 3 ──
+  useEffect(() => {
+    if (step !== 3) return;
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    reloadTimerRef.current = setTimeout(() => {
+      resetEmbed();
+      handlePrepareEmbed();
+    }, 400);
+    return () => { if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBumps, quantity]);
 
   // ── Step 4: Confirmation ──
   if (step === 4) {
@@ -480,109 +500,56 @@ export default function Checkout() {
               {step === 3 && (
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
 
-                  {/* Bumps — hidden when embed is open */}
-                  {!showEmbed && (
-                    <>
-                      <div className="bg-green-50 border-b border-green-100 px-5 py-3">
-                        <p className="text-sm font-black text-primary text-center">Add more packs at a promotional price</p>
-                      </div>
-                      <div className="divide-y divide-gray-100">
-                        {orderBumps.map(bump => {
-                          const active = selectedBumps.has(bump.id);
-                          return (
-                            <div key={bump.id} className={`p-4 transition-colors ${active ? "bg-green-50" : "bg-white"}`}>
-                              <div className="flex gap-3 mb-3">
-                                <img src={bump.img} alt={bump.label} className="w-16 h-16 object-contain rounded-lg border border-gray-100 bg-white flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                                    <span className="font-bold text-gray-900 text-sm">{bump.label}</span>
-                                    {bump.badge && (
-                                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${bump.badge.cls}`}>{bump.badge.text}</span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-gray-500 mb-1.5">{bump.desc}</p>
-                                  <div className="flex items-baseline gap-1.5">
-                                    <span className="text-xs text-gray-400 line-through">{fmtGBP(bump.oldPrice)}</span>
-                                    <span className="text-lg font-black text-primary">{fmtGBP(bump.price)}</span>
-                                  </div>
-                                </div>
+                  {/* Bumps — always visible so user can add/remove before paying */}
+                  <div className="bg-green-50 border-b border-green-100 px-5 py-3">
+                    <p className="text-sm font-black text-primary text-center">Add more packs at a promotional price</p>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {orderBumps.map(bump => {
+                      const active = selectedBumps.has(bump.id);
+                      return (
+                        <div key={bump.id} className={`p-4 transition-colors ${active ? "bg-green-50" : "bg-white"}`}>
+                          <div className="flex gap-3 mb-3">
+                            <img src={bump.img} alt={bump.label} className="w-16 h-16 object-contain rounded-lg border border-gray-100 bg-white flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                                <span className="font-bold text-gray-900 text-sm">{bump.label}</span>
+                                {bump.badge && (
+                                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${bump.badge.cls}`}>{bump.badge.text}</span>
+                                )}
                               </div>
-                              <button type="button" onClick={() => toggleBump(bump.id)}
-                                className={`w-full py-2.5 rounded-xl border-2 font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-                                  active ? "border-primary bg-primary text-white" : "border-primary text-primary bg-white hover:bg-green-50"
-                                }`}>
-                                {active ? <><CheckCircle className="w-4 h-4" /> Added</> : <>+ Add to order</>}
-                              </button>
+                              <p className="text-xs text-gray-500 mb-1.5">{bump.desc}</p>
+                              <div className="flex items-baseline gap-1.5">
+                                <span className="text-xs text-gray-400 line-through">{fmtGBP(bump.oldPrice)}</span>
+                                <span className="text-lg font-black text-primary">{fmtGBP(bump.price)}</span>
+                              </div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-
-                  {/* Bump summary when embed is open */}
-                  {showEmbed && selectedBumps.size > 0 && (
-                    <div className="bg-green-50 px-4 py-2 border-b border-green-100 flex items-center justify-between">
-                      <span className="text-xs font-bold text-green-800">
-                        {selectedBumps.size} extra pack{selectedBumps.size > 1 ? "s" : ""} added · +{fmtGBP(bumpsTotal)}
-                      </span>
-                      <button type="button" onClick={resetEmbed} className="text-xs text-gray-500 underline hover:text-gray-700">Change</button>
-                    </div>
-                  )}
+                          </div>
+                          <button type="button" onClick={() => toggleBump(bump.id)}
+                            className={`w-full py-2.5 rounded-xl border-2 font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                              active ? "border-primary bg-primary text-white" : "border-primary text-primary bg-white hover:bg-green-50"
+                            }`}>
+                            {active ? <><CheckCircle className="w-4 h-4" /> Added</> : <>+ Add to order</>}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
 
                   {/* Payment area */}
-                  <div className={showEmbed ? "border-t border-gray-100" : "px-5 pt-5 pb-5 border-t border-gray-100"}>
-                    {!showEmbed && (
-                      <>
-                        <h2 className="text-xl font-bold text-gray-900 mb-0.5">Payment</h2>
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">100% Secure & encrypted payment</p>
-                      </>
-                    )}
-
+                  <div className="border-t border-gray-100">
                     {error && (
-                      <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+                      <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 m-4">
                         <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                         <p className="text-sm text-red-700">{error}</p>
                       </div>
                     )}
 
-                    {/* Total summary */}
-                    {!showEmbed && (
-                      <div className="border-t border-gray-100 pt-4 space-y-2 mb-5">
-                        <div className="flex justify-between text-sm text-gray-500">
-                          <span>Delivery</span>
-                          <span className="text-primary font-semibold">Free</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-gray-600">
-                          <span>{kit.name}{quantity > 1 ? ` × ${quantity}` : ""}</span>
-                          <span>{fmtGBP(kit.price * quantity)}</span>
-                        </div>
-                        {orderBumps.filter(b => selectedBumps.has(b.id)).map(b => (
-                          <div key={b.id} className="flex justify-between text-sm text-gray-600">
-                            <span className="text-xs">{b.label}</span>
-                            <span>{fmtGBP(b.price)}</span>
-                          </div>
-                        ))}
-                        <div className="flex justify-between items-center pt-3 border-t border-gray-200">
-                          <span className="font-black text-gray-900 text-base">Total</span>
-                          <span className="font-black text-primary text-xl">{fmtGBP(orderTotal)}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Buttons: Back + Pay */}
-                    {!showEmbed && (
-                      <div className="flex gap-3 mb-4">
-                        <button type="button" onClick={() => setStep(2)}
-                          className="flex-shrink-0 px-5 py-4 rounded-full border-2 border-gray-300 text-gray-700 font-black text-sm hover:border-gray-400 transition-all">
-                          BACK
-                        </button>
-                        <button type="button" onClick={handlePrepareEmbed} disabled={preparingEmbed}
-                          className="flex-1 bg-primary hover:bg-green-700 disabled:opacity-60 text-white font-black text-base py-4 rounded-full flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
-                          {preparingEmbed
-                            ? <><Loader2 className="w-5 h-5 animate-spin" /> Preparing…</>
-                            : <>Pay {fmtGBP(orderTotal)} →</>}
-                        </button>
+                    {/* Loading indicator while preparing checkout */}
+                    {preparingEmbed && (
+                      <div className="flex flex-col items-center py-10 gap-3">
+                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                        <p className="text-sm text-gray-500 font-medium">Loading secure checkout…</p>
                       </div>
                     )}
 
@@ -596,9 +563,9 @@ export default function Checkout() {
                               Secure payment · {fmtGBP(orderTotal)}
                             </span>
                           </div>
-                          <button type="button" onClick={resetEmbed}
+                          <button type="button" onClick={() => setStep(2)}
                             className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors">
-                            <X className="w-3.5 h-3.5" /> Cancel
+                            ← Back
                           </button>
                         </div>
 
@@ -651,8 +618,8 @@ export default function Checkout() {
                       </div>
                     )}
 
-                    {!showEmbed && (
-                      <>
+                    {!showEmbed && !preparingEmbed && (
+                      <div className="px-5 pb-5">
                         <p className="text-center text-[11px] text-gray-400 mb-3">SSL Secure checkout · 7-day guarantee · Free delivery UK</p>
                         <div className="flex items-center justify-center gap-3 mb-3">
                           <CreditCard className="w-4 h-4 text-gray-400" />
@@ -660,7 +627,7 @@ export default function Checkout() {
                           <span className="text-xs font-black text-gray-500 border border-gray-300 rounded px-2 py-0.5">MASTERCARD</span>
                         </div>
                         <p className="text-center text-[10px] text-gray-400">Panini UK Ltd · Printed in England<br />Company No. 00000000</p>
-                      </>
+                      </div>
                     )}
                   </div>
                 </motion.div>
