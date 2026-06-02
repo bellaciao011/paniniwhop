@@ -24,6 +24,11 @@ export default function Checkout() {
     try { return window !== window.top; } catch { return true; }
   });
 
+  // ── Detect mobile: redirect to Whop page instead of embedding ──
+  const [isMobile] = useState<boolean>(() => {
+    try { return window.innerWidth < 768; } catch { return false; }
+  });
+
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string>("");
   const [selectedBumps, setSelectedBumps] = useState<Set<string>>(new Set());
@@ -204,6 +209,12 @@ export default function Checkout() {
         setError(data.error ?? "Error creating payment session. Please try again.");
         setPreparingEmbed(false);
         return;
+      }
+
+      // On mobile (non-iframe), redirect directly to Whop's responsive checkout page
+      if (isMobile && !isInIframe && data.purchaseUrl) {
+        window.location.href = data.purchaseUrl;
+        return; // navigation in progress
       }
 
       setEmbedPlanId(data.planId);
